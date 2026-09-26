@@ -61,10 +61,14 @@ public final class ShiftSplitter {
     }
 
     /**
-     * Разбивает смены одного сотрудника на отрезки.
+     * Разбивает смены одного сотрудника на отрезки с единым типом времени.
+     * Приоритет типов: праздничное, сверхурочное, ночное, обычное.
      *
      * @param employeeShifts смены одного сотрудника
-     * @return отрезки смен в хронологическом порядке
+     * @return неизменяемый список отрезков в хронологическом порядке
+     * @throws NullPointerException если список или один из его элементов равен {@code null}
+     * @throws IllegalArgumentException если смены принадлежат разным сотрудникам
+     *                                  или пересекаются
      */
     public List<TimeSegment> split(List<Shift> employeeShifts) {
         Objects.requireNonNull(

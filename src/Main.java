@@ -11,8 +11,22 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Set;
 
+/**
+ * Демонстрирует разбиение смены на оплачиваемые временные отрезки.
+ */
 public class Main {
 
+    /**
+     * Создаёт экземпляр класса запуска приложения.
+     */
+    public Main() {
+    }
+
+    /**
+     * Запускает пример расчёта и выводит полученные отрезки в консоль.
+     *
+     * @param args аргументы командной строки; в примере не используются
+     */
     public static void main(String[] args) {
         ZoneId zone = ZoneId.of("Europe/Moscow");
         LocalDate date = LocalDate.of(2026, 9, 25);

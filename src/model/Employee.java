@@ -3,12 +3,25 @@ package model;
 import java.util.Objects;
 
 
+/**
+ * Неизменяемые сведения о сотруднике и его почасовой ставке.
+ */
 public final class Employee {
     private final long id;
     private final String name;
     private final long hourlyRateKopecks;
 
 
+    /**
+     * Создаёт сотрудника.
+     *
+     * @param id уникальный положительный идентификатор
+     * @param name имя сотрудника; окружающие пробелы удаляются
+     * @param hourlyRateKopecks почасовая ставка в копейках
+     * @throws NullPointerException если {@code name} равен {@code null}
+     * @throws IllegalArgumentException если идентификатор или ставка не положительны,
+     *                                  либо имя пустое
+     */
     public Employee(long id, String name, long hourlyRateKopecks) {
         if (id <= 0) {
             throw new IllegalArgumentException("Идентификатор сотрудника должен быть положительным");
@@ -24,14 +37,29 @@ public final class Employee {
         this.hourlyRateKopecks = hourlyRateKopecks;
     }
 
+    /**
+     * Возвращает уникальный идентификатор сотрудника.
+     *
+     * @return уникальный идентификатор сотрудника
+     */
     public long getId() {
         return id;
     }
 
+    /**
+     * Возвращает имя сотрудника.
+     *
+     * @return имя сотрудника
+     */
     public String getName() {
         return name;
     }
 
+    /**
+     * Возвращает почасовую ставку.
+     *
+     * @return почасовая ставка в копейках
+     */
     public long getHourlyRateKopecks() {
         return hourlyRateKopecks;
     }

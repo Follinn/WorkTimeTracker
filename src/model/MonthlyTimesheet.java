@@ -8,6 +8,10 @@ import java.util.List;
 import java.util.Objects;
 
 
+/**
+ * Табель смен за месяц в заданном часовом поясе.
+ * Не допускает пересекающихся смен одного сотрудника.
+ */
 public final class MonthlyTimesheet {
 
     private final YearMonth month;
@@ -15,6 +19,13 @@ public final class MonthlyTimesheet {
     private final List<Shift> shifts = new ArrayList<>();
 
 
+    /**
+     * Создаёт пустой табель за месяц.
+     *
+     * @param month учитываемый месяц
+     * @param zone часовой пояс границ месяца
+     * @throws NullPointerException если любой аргумент равен {@code null}
+     */
     public MonthlyTimesheet(YearMonth month, ZoneId zone) {
         this.month = Objects.requireNonNull(
                 month, "Месяц не должен быть null"
@@ -25,6 +36,14 @@ public final class MonthlyTimesheet {
     }
 
 
+    /**
+     * Добавляет смену, пересекающуюся с указанным месяцем.
+     *
+     * @param shift добавляемая смена
+     * @throws NullPointerException если {@code shift} равен {@code null}
+     * @throws IllegalArgumentException если смена не относится к месяцу или
+     *                                  пересекается со сменой того же сотрудника
+     */
     public void addShift(Shift shift) {
         Objects.requireNonNull(shift, "Смена не должна быть null");
 
@@ -69,11 +88,22 @@ public final class MonthlyTimesheet {
     }
 
 
+    /**
+     * Возвращает все смены табеля.
+     *
+     * @return неизменяемый снимок списка смен
+     */
     public List<Shift> getShifts() {
         return List.copyOf(shifts);
     }
 
 
+    /**
+     * Возвращает смены сотрудника с указанным идентификатором.
+     *
+     * @param employeeId идентификатор сотрудника
+     * @return неизменяемый список найденных смен
+     */
     public List<Shift> getShiftsByEmployee(long employeeId) {
         List<Shift> result = new ArrayList<>();
 
@@ -87,10 +117,20 @@ public final class MonthlyTimesheet {
     }
 
 
+    /**
+     * Возвращает месяц табеля.
+     *
+     * @return месяц, к которому относится табель
+     */
     public YearMonth getMonth() {
         return month;
     }
 
+    /**
+     * Возвращает часовой пояс границ месяца.
+     *
+     * @return часовой пояс границ месяца
+     */
     public ZoneId getZone() {
         return zone;
     }
