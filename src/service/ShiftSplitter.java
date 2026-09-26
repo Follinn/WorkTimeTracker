@@ -1,0 +1,194 @@
+package service;
+
+import model.Shift;
+import model.TimeSegment;
+import model.TimeType;
+
+import java.time.LocalTime;
+import java.time.ZonedDateTime;
+import java.util.HashMap;
+import java.util.Map;
+
+import java.time.Duration;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import java.util.ArrayList;
+import java.util.Comparator;
+
+/**
+ * Разбивает смены сотрудника на отрезки разных типов времени.
+ */
+public final class ShiftSplitter {
+
+    private final ZoneId zone;
+    private final Set<LocalDate> holidays;
+    private final Duration dailyThreshold;
+
+    /**
+     * Создаёт обработчик смен.
+     *
+     * @param zone часовой пояс расчёта
+     * @param holidays праздничные даты
+     * @param dailyThreshold дневной порог обычного времени
+     * @throws NullPointerException если аргумент равен null
+     * @throws IllegalArgumentException если порог не положительный
+     */
+    public ShiftSplitter(
+            ZoneId zone,
+            Set<LocalDate> holidays,
+            Duration dailyThreshold
+    ) {
+        this.zone = Objects.requireNonNull(
+                zone, "Часовой пояс не должен быть null"
+        );
+        this.holidays = Set.copyOf(
+                Objects.requireNonNull(
+                        holidays, "Праздники не должны быть null"
+                )
+        );
+        this.dailyThreshold = Objects.requireNonNull(
+                dailyThreshold, "Дневной порог не должен быть null"
+        );
+
+        if (dailyThreshold.isNegative() || dailyThreshold.isZero()) {
+            throw new IllegalArgumentException(
+                    "Дневной порог должен быть положительным"
+            );
+        }
+    }
+
+    /**
+     * Разбивает смены одного сотрудника на отрезки.
+     *
+     * @param employeeShifts смены одного сотрудника
+     * @return отрезки смен в хронологическом порядке
+     */
+    public List<TimeSegment> split(List<Shift> employeeShifts) {
+        Objects.requireNonNull(
+                employeeShifts, "Список смен не должен быть null"
+        );
+
+        List<Shift> sortedShifts = new ArrayList<>(employeeShifts);
+
+        for (Shift shift : sortedShifts) {
+            Objects.requireNonNull(
+                    shift, "Список не должен содержать null"
+            );
+        }
+
+        sortedShifts.sort(
+                Comparator.comparing(shift -> shift.getStart().toInstant())
+        );
+
+        if (sortedShifts.isEmpty()) {
+            return List.of();
+        }
+
+        long employeeId = sortedShifts.get(0).getEmployee().getId();
+
+        for (int i = 0; i < sortedShifts.size(); i++) {
+            Shift current = sortedShifts.get(i);
+
+            if (current.getEmployee().getId() != employeeId) {
+                throw new IllegalArgumentException(
+                        "Все смены должны принадлежать одному сотруднику"
+                );
+            }
+
+            if (i > 0) {
+                Shift previous = sortedShifts.get(i - 1);
+
+                if (current.getStart().toInstant()
+                        .isBefore(previous.getEnd().toInstant())) {
+                    throw new IllegalArgumentException(
+                            "Смены сотрудника не должны пересекаться"
+                    );
+                }
+            }
+        }
+
+        List<TimeSegment> result = new ArrayList<>();
+
+// Храним отработанное время отдельно для каждой даты.
+        Map<LocalDate, Duration> workedByDate = new HashMap<>();
+
+        for (Shift shift : sortedShifts) {
+            ZonedDateTime current = shift.getStart().withZoneSameInstant(zone);
+            ZonedDateTime shiftEnd = shift.getEnd().withZoneSameInstant(zone);
+
+            while (current.isBefore(shiftEnd)) {
+                LocalDate date = current.toLocalDate();
+                LocalTime time = current.toLocalTime();
+
+                Duration worked = workedByDate.getOrDefault(
+                        date, Duration.ZERO
+                );
+
+                // Определяем тип текущего отрезка.
+                TimeType type;
+
+                if (holidays.contains(date)) {
+                    type = TimeType.HOLIDAY;
+                } else if (worked.compareTo(dailyThreshold) >= 0) {
+                    type = TimeType.OVERTIME;
+                } else if (time.isBefore(LocalTime.of(6, 0))
+                        || !time.isBefore(LocalTime.of(22, 0))) {
+                    type = TimeType.NIGHT;
+                } else {
+                    type = TimeType.REGULAR;
+                }
+
+                // Изначально считаем, что отрезок длится до конца смены.
+                ZonedDateTime segmentEnd = shiftEnd;
+
+                ZonedDateTime midnight = date.plusDays(1).atStartOfDay(zone);
+                ZonedDateTime morning = date.atTime(6, 0).atZone(zone);
+                ZonedDateTime night = date.atTime(22, 0).atZone(zone);
+
+                // Выбираем ближайшую границу впереди текущего момента.
+                for (ZonedDateTime boundary : List.of(midnight, morning, night)) {
+                    if (boundary.isAfter(current)
+                            && boundary.isBefore(segmentEnd)) {
+                        segmentEnd = boundary;
+                    }
+                }
+
+                // При переводе часов заново определяем местную дату и время.
+                var transition = zone.getRules()
+                        .nextTransition(current.toInstant());
+
+                if (transition != null
+                        && transition.getInstant().isBefore(segmentEnd.toInstant())) {
+                    segmentEnd = transition.getInstant().atZone(zone);
+                }
+
+                // Если порог ещё не достигнут, он тоже может стать границей.
+                if (worked.compareTo(dailyThreshold) < 0) {
+                    Duration remaining = dailyThreshold.minus(worked);
+                    ZonedDateTime thresholdMoment = current.plus(remaining);
+
+                    if (thresholdMoment.isBefore(segmentEnd)) {
+                        segmentEnd = thresholdMoment;
+                    }
+                }
+
+                TimeSegment segment = new TimeSegment(
+                        current, segmentEnd, type
+                );
+
+                result.add(segment);
+
+                workedByDate.put(
+                        date, worked.plus(segment.getDuration())
+                );
+
+                current = segmentEnd;
+            }
+        }
+
+        return List.copyOf(result);
+    }
+}
