@@ -4,22 +4,24 @@ import model.Shift;
 import model.TimeSegment;
 import model.TimeType;
 
-import java.time.LocalTime;
-import java.time.ZonedDateTime;
-import java.util.HashMap;
-import java.util.Map;
-
 import java.time.Duration;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.ZoneId;
-import java.util.List;
-import java.util.Objects;
-import java.util.Set;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 
 /**
  * Разбивает смены сотрудника на отрезки разных типов времени.
+ * Местные даты и ночные границы определяются в заданном часовом поясе.
+ * Дневной порог учитывает фактическую длительность всех смен за местные сутки,
+ * включая ночные и праздничные часы, но не перерывы между сменами.
  */
 public final class ShiftSplitter {
 
@@ -33,7 +35,7 @@ public final class ShiftSplitter {
      * @param zone часовой пояс расчёта
      * @param holidays праздничные даты
      * @param dailyThreshold дневной порог обычного времени
-     * @throws NullPointerException если аргумент равен null
+     * @throws NullPointerException если аргумент или элемент множества праздников равен {@code null}
      * @throws IllegalArgumentException если порог не положительный
      */
     public ShiftSplitter(
@@ -44,11 +46,11 @@ public final class ShiftSplitter {
         this.zone = Objects.requireNonNull(
                 zone, "Часовой пояс не должен быть null"
         );
-        this.holidays = Set.copyOf(
-                Objects.requireNonNull(
-                        holidays, "Праздники не должны быть null"
-                )
-        );
+        Objects.requireNonNull(holidays, "Праздники не должны быть null");
+        for (LocalDate holiday : holidays) {
+            Objects.requireNonNull(holiday, "Дата праздника не должна быть null");
+        }
+        this.holidays = Set.copyOf(holidays);
         this.dailyThreshold = Objects.requireNonNull(
                 dailyThreshold, "Дневной порог не должен быть null"
         );
@@ -63,6 +65,11 @@ public final class ShiftSplitter {
     /**
      * Разбивает смены одного сотрудника на отрезки с единым типом времени.
      * Приоритет типов: праздничное, сверхурочное, ночное, обычное.
+     * Смены сортируются по моменту начала без изменения исходного списка.
+     * Сотрудник определяется по ID; соприкасающиеся смены допустимы.
+     * При каждом вызове накопленное время рассчитывается заново.
+     * Соседние отрезки могут иметь одинаковый тип: границы смен, суток
+     * и переводов часов сохраняются.
      *
      * @param employeeShifts смены одного сотрудника
      * @return неизменяемый список отрезков в хронологическом порядке
@@ -116,7 +123,7 @@ public final class ShiftSplitter {
 
         List<TimeSegment> result = new ArrayList<>();
 
-// Храним отработанное время отдельно для каждой даты.
+        // Храним отработанное время отдельно для каждой даты.
         Map<LocalDate, Duration> workedByDate = new HashMap<>();
 
         for (Shift shift : sortedShifts) {
@@ -172,10 +179,14 @@ public final class ShiftSplitter {
                 // Если порог ещё не достигнут, он тоже может стать границей.
                 if (worked.compareTo(dailyThreshold) < 0) {
                     Duration remaining = dailyThreshold.minus(worked);
-                    ZonedDateTime thresholdMoment = current.plus(remaining);
+                    Duration segmentDuration = Duration.between(
+                            current.toInstant(), segmentEnd.toInstant()
+                    );
 
-                    if (thresholdMoment.isBefore(segmentEnd)) {
-                        segmentEnd = thresholdMoment;
+                    // Вычисляем дату порога только внутри текущего отрезка.
+                    // Это также исключает переполнение при очень большом пороге.
+                    if (remaining.compareTo(segmentDuration) < 0) {
+                        segmentEnd = current.toInstant().plus(remaining).atZone(zone);
                     }
                 }
 
